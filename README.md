@@ -1,77 +1,67 @@
-# REST vs gRPC: Order → Inventory
+# REST vs gRPC: Order and Inventory Services
 
-The same two-service interaction is built twice in Python, once over **REST/HTTP + JSON** and once over **gRPC + Protocol Buffers**:
+For this lab I built the same two services twice in Python, once using REST (Flask + JSON) and once using gRPC (Protocol Buffers).
 
-- **Order Service** accepts an order (`item_id`, `quantity`) and asks the Inventory Service whether it can be filled.
-- **Inventory Service** checks whether the item exists and has enough units in stock.
+- The **Order Service** takes an order with an `item_id` and a `quantity`.
+- The **Inventory Service** checks if that item exists and if there's enough of it in stock.
 
-```mermaid
-flowchart LR
-  C1["curl"] -- "POST /orders (JSON)" --> O1["Order Service<br/>REST :8000"]
-  O1 -- "POST /inventory/check (JSON)<br/>timeout 2s" --> I1["Inventory Service<br/>REST :8001"]
-  C2["order_client.py"] -- "OrderService/PlaceOrder" --> O2["Order Service<br/>gRPC :50052"]
-  O2 -- "InventoryService/CheckAvailability<br/>deadline 2s" --> I2["Inventory Service<br/>gRPC :50051"]
+Before confirming an order, the Order Service asks the Inventory Service if the item is available. That call is the part I implemented both ways:
+
+```
+REST:  curl             -> Order Service :8000   -- POST /inventory/check -->    Inventory Service :8001
+gRPC:  order_client.py  -> Order Service :50052  -- CheckAvailability (gRPC) --> Inventory Service :50051
 ```
 
-Both Inventory services read the same stock from [`data/inventory.json`](data/inventory.json):
+Both inventory services load the same stock from [`data/inventory.json`](data/inventory.json):
 
 | item_id | laptop | keyboard | monitor | headphones |
 |---|---|---|---|---|
 | in stock | 10 | 25 | 3 | 0 |
 
-## Repository layout
+## What's in the repo
 
 ```
-proto/
-  inventory.proto          InventoryService contract (CheckAvailability)
-  order.proto              OrderService contract (PlaceOrder, Health)
-rest_version/
-  inventory_service.py     Flask, POST /inventory/check            :8001
-  order_service.py         Flask, POST /orders, GET /health         :8000
-grpc_version/
-  inventory_server.py      gRPC InventoryService                    :50051
-  order_server.py          gRPC OrderService                        :50052
-  order_client.py          command-line gRPC client (the gRPC "curl")
-  *_pb2.py, *_pb2_grpc.py  code generated from proto/
-data/inventory.json        stock shared by both versions
-scripts/demo.sh            runs the whole demo for one version and saves evidence/
-evidence/rest, evidence/grpc   client output and service logs from the runs shown below
+proto/            inventory.proto and order.proto (the gRPC contracts)
+rest_version/     inventory_service.py and order_service.py (Flask)
+grpc_version/     inventory_server.py, order_server.py, order_client.py
+                  plus the *_pb2.py / *_pb2_grpc.py files generated from proto/
+data/             inventory.json
+scripts/demo.sh   runs the whole demo for one version and saves the output to evidence/
+evidence/         client output and service logs used in this README
 ```
 
-## Contract and status codes
+## Status codes
 
-| Situation | REST Inventory | REST Order | gRPC Inventory | gRPC Order |
-|---|---|---|---|---|
-| Item in stock | `200 OK` | `201 Created` | `OK` | `OK` (status `CONFIRMED`) |
-| Bad input (quantity < 1, missing or wrong-type field) | `400 Bad Request` | `400 Bad Request` | `INVALID_ARGUMENT` | `INVALID_ARGUMENT` |
-| Unknown item | `404 Not Found` | `404 Not Found` | `NOT_FOUND` | `NOT_FOUND` |
-| Not enough stock | `409 Conflict` | `409 Conflict` | `FAILED_PRECONDITION` | `FAILED_PRECONDITION` |
-| Inventory slower than the timeout / deadline | – | `504 Gateway Timeout` | stops work when the deadline expires | `DEADLINE_EXCEEDED` |
-| Inventory not reachable | – | `503 Service Unavailable` | – | `UNAVAILABLE` |
+I tried to keep the two versions matching, so every case has a REST status and the gRPC equivalent:
 
-Not enough stock maps to `409 Conflict` and `FAILED_PRECONDITION` because the request is valid but the current state of the inventory can't satisfy it. `RESOURCE_EXHAUSTED` is meant for quotas and rate limits, so it isn't used here. The Order → Inventory call has a **2 second** limit in both versions (`--timeout` for REST, `--deadline` for gRPC).
+| Case | REST | gRPC |
+|---|---|---|
+| Order placed | 201 Created | OK |
+| Bad input (like quantity 0) | 400 Bad Request | INVALID_ARGUMENT |
+| Item doesn't exist | 404 Not Found | NOT_FOUND |
+| Not enough stock | 409 Conflict | FAILED_PRECONDITION |
+| Inventory too slow | 504 Gateway Timeout | DEADLINE_EXCEEDED |
+| Inventory down | 503 Service Unavailable | UNAVAILABLE |
 
-## Setup (once)
+The inventory service returns the 400/404/409 (or INVALID_ARGUMENT/NOT_FOUND/FAILED_PRECONDITION) errors and the order service passes them on to the client. For "not enough stock" I picked 409 and FAILED_PRECONDITION, because the request itself is fine, the inventory just can't cover it right now.
 
-Requires Python 3.10+. The evidence below was produced with Python 3.13.15 on Windows 11.
+The Order -> Inventory call has a 2 second limit in both versions (`--timeout` for REST, `--deadline` for gRPC).
+
+## Setup
+
+I used Python 3.13 on Windows 11, but any Python 3.10+ should work.
 
 ```bash
-# macOS / Linux / Git Bash
 python -m venv .venv
 source .venv/bin/activate        # Git Bash on Windows: source .venv/Scripts/activate
 pip install -r requirements.txt
 ```
 
-```powershell
-# Windows PowerShell
-python -m venv .venv
-.venv\Scripts\Activate.ps1       # if blocked: Set-ExecutionPolicy -Scope Process Bypass
-pip install -r requirements.txt
-```
+In Windows PowerShell, activate with `.venv\Scripts\Activate.ps1` instead (if that's blocked, run `Set-ExecutionPolicy -Scope Process Bypass` first).
 
-Run every command below from the repository root, with the virtual environment active.
+Run all the commands below from the repo root with the venv active.
 
-The generated gRPC code is committed, so you don't need to regenerate it. After changing a `.proto` file, regenerate it with:
+The generated gRPC files are already in the repo. If you change a `.proto` file, regenerate them with:
 
 ```bash
 python -m grpc_tools.protoc -I proto --python_out=grpc_version --grpc_python_out=grpc_version proto/inventory.proto proto/order.proto
@@ -79,69 +69,72 @@ python -m grpc_tools.protoc -I proto --python_out=grpc_version --grpc_python_out
 
 ## Running the REST version
 
+You need three terminals:
+
 ```bash
-# Terminal 1 - Inventory Service (REST) on :8001
+# terminal 1: inventory service on port 8001
 python rest_version/inventory_service.py
 
-# Terminal 2 - Order Service (REST) on :8000, 2 s timeout on the call to Inventory
+# terminal 2: order service on port 8000, with a 2 second timeout on the inventory call
 python rest_version/order_service.py --timeout 2
 
-# Terminal 3 - client
+# terminal 3: place an order, then check the order service's health
 curl -i -X POST http://127.0.0.1:8000/orders -H "Content-Type: application/json" -d '{"item_id": "laptop", "quantity": 2}'
 curl -i http://127.0.0.1:8000/health
 ```
 
-> **PowerShell:** Windows PowerShell 5.1 strips the inner quotes from `-d '{...}'`, so pipe the body in instead:
-> `'{"item_id": "laptop", "quantity": 2}' | curl.exe -i -X POST http://127.0.0.1:8000/orders -H "Content-Type: application/json" --data-binary '@-'`
+In PowerShell the quotes inside `-d '{...}'` get stripped, so pipe the JSON in instead:
 
-**Timeout demo (REST):**
+```powershell
+'{"item_id": "laptop", "quantity": 2}' | curl.exe -i -X POST http://127.0.0.1:8000/orders -H "Content-Type: application/json" --data-binary '@-'
+```
 
-1. In Terminal 1, press `Ctrl+C`, then restart Inventory with a 5 s delay, which is longer than the 2 s timeout:
-   `python rest_version/inventory_service.py --delay 5`
-2. In Terminal 3, send the order again. After about 2 s it returns **`504 Gateway Timeout`**.
-3. `curl -i http://127.0.0.1:8000/health` still returns `200` with the **same pid**: the Order Service never stopped.
-4. In Terminal 1, press `Ctrl+C` and start Inventory without `--delay`. The next order returns `201 Created` from the same Order Service process.
+To test the timeout:
+
+1. Stop the inventory service (Ctrl+C) and start it again with a 5 second delay: `python rest_version/inventory_service.py --delay 5`
+2. Send the same order again. After about 2 seconds it comes back with `504 Gateway Timeout`.
+3. Run the health check. The order service still answers, with the same pid as before.
+4. Restart the inventory service without `--delay` and send another order. It goes through (201), handled by the same order service process.
 
 ## Running the gRPC version
 
 ```bash
-# Terminal 1 - Inventory Service (gRPC) on :50051
+# terminal 1: inventory service on port 50051
 python grpc_version/inventory_server.py
 
-# Terminal 2 - Order Service (gRPC) on :50052, 2 s deadline on the call to Inventory
+# terminal 2: order service on port 50052, with a 2 second deadline on the inventory call
 python grpc_version/order_server.py --deadline 2
 
-# Terminal 3 - client
+# terminal 3: place an order, then check the order service's health
 python grpc_version/order_client.py laptop 2
 python grpc_version/order_client.py --health
 ```
 
-**Deadline demo (gRPC):**
+You can't just curl a gRPC service, so I wrote `order_client.py` for testing. It prints the request, the status code, and the response.
 
-1. In Terminal 1, press `Ctrl+C`, then restart Inventory with a 5 s delay, which is longer than the 2 s deadline:
-   `python grpc_version/inventory_server.py --delay 5`
-2. `python grpc_version/order_client.py laptop 1` returns **`DEADLINE_EXCEEDED`** after about 2 s.
-3. `python grpc_version/order_client.py --health` still returns `OK` with the **same pid**.
-4. In Terminal 1, press `Ctrl+C` and start Inventory without `--delay`. The next order is `CONFIRMED` by the same Order Service process.
+To test the deadline:
 
-### One-command demo
+1. Restart the inventory service with a delay: `python grpc_version/inventory_server.py --delay 5`
+2. Run `python grpc_version/order_client.py laptop 1`. After about 2 seconds it fails with `DEADLINE_EXCEEDED`.
+3. Run `python grpc_version/order_client.py --health`. It still returns OK with the same pid.
+4. Restart the inventory service without the delay. The next order is confirmed by the same order service.
 
-`scripts/demo.sh` runs all of the steps above for one version. It starts both services, sends the requests, restarts Inventory with `--delay 5` and then without it, and saves every client output and service log to `evidence/<version>/`. It runs in Git Bash on Windows and in bash on macOS/Linux:
+### Running everything with one script
+
+`scripts/demo.sh` does all of the steps above on its own and saves the output to `evidence/`. It runs in Git Bash on Windows, or in bash on Mac/Linux:
 
 ```bash
 bash scripts/demo.sh rest
 bash scripts/demo.sh grpc
 ```
 
----
+## Results
 
-## Evidence
+Everything below is copied from the files in [`evidence/`](evidence), which I got by running `scripts/demo.sh` for each version. The service logs use my local time (PDT) and the HTTP `Date` header uses GMT, so they're 7 hours apart.
 
-All output below is unedited. It comes from `bash scripts/demo.sh rest` and `bash scripts/demo.sh grpc`, and the complete files are in [`evidence/`](evidence). Service logs show local time (PDT). The HTTP `Date` header is in GMT, which is 7 hours ahead.
+### Successful REST request
 
-### 1. Successful REST request and response
-
-Client ([`evidence/rest/client_1_normal.txt`](evidence/rest/client_1_normal.txt)):
+From [`evidence/rest/client_1_normal.txt`](evidence/rest/client_1_normal.txt):
 
 ```
 $ curl -s -i -X POST http://127.0.0.1:8000/orders -H "Content-Type: application/json" -d '{"item_id": "laptop", "quantity": 2}'
@@ -155,7 +148,7 @@ Connection: close
 {"order_id":"ORD-0001","status":"CONFIRMED","item_id":"laptop","quantity":2}
 ```
 
-The Order → Inventory REST call on its own:
+I also called the inventory endpoint directly, to show the Order -> Inventory request by itself:
 
 ```
 $ curl -s -i -X POST http://127.0.0.1:8001/inventory/check -H "Content-Type: application/json" -d '{"item_id": "laptop", "quantity": 2}'
@@ -169,15 +162,14 @@ Connection: close
 {"item_id":"laptop","requested_quantity":2,"available_quantity":10,"available":true}
 ```
 
-Order Service log ([`evidence/rest/order_service.log`](evidence/rest/order_service.log)):
+The order service log for that request ([`evidence/rest/order_service.log`](evidence/rest/order_service.log)):
 
 ```
 16:24:45.044 INFO    order-rest | POST /orders item_id=laptop quantity=2 -> POST http://127.0.0.1:8001/inventory/check (timeout 2.0s)
 16:24:45.048 INFO    order-rest | Inventory 200 OK in 4 ms -> 201 Created ORD-0001
 ```
 
-<details>
-<summary>REST error cases: 409, 404, 400</summary>
+And the error cases: 409 for not enough stock, 404 for an item that doesn't exist, and 400 for a bad quantity.
 
 ```
 $ curl -s -i -X POST http://127.0.0.1:8000/orders -H "Content-Type: application/json" -d '{"item_id": "monitor", "quantity": 5}'
@@ -211,11 +203,9 @@ Connection: close
 {"error":"INVALID_ARGUMENT","message":"quantity must be an integer >= 1"}
 ```
 
-</details>
+### Successful gRPC request
 
-### 2. Successful gRPC request and response
-
-Client ([`evidence/grpc/client_1_normal.txt`](evidence/grpc/client_1_normal.txt)). Messages are printed in protobuf text format:
+From [`evidence/grpc/client_1_normal.txt`](evidence/grpc/client_1_normal.txt) (the client prints messages in protobuf text format):
 
 ```
 $ python grpc_version/order_client.py laptop 2
@@ -229,7 +219,7 @@ $ python grpc_version/order_client.py laptop 2
   quantity: 2
 ```
 
-The Order → Inventory gRPC call, as seen in both service logs:
+The Order -> Inventory call shows up in both service logs:
 
 ```
 # evidence/grpc/order_service.log
@@ -241,7 +231,7 @@ The Order → Inventory gRPC call, as seen in both service logs:
 16:25:03.531 INFO    inventory-grpc | -> OK available_quantity=10 (after 0.00s)
 ```
 
-When the item is unavailable, the gRPC call fails with a status code instead of returning a reply:
+When the item isn't available, the call fails with a gRPC status code instead of returning a response:
 
 ```
 $ python grpc_version/order_client.py monitor 5
@@ -265,11 +255,9 @@ $ python grpc_version/order_client.py laptop 0
   details: quantity must be an integer >= 1
 ```
 
-### 3. REST timeout handling
+### REST timeout
 
-Inventory was restarted with `--delay 5`, and the Order Service was left running with `--timeout 2`.
-
-Client ([`evidence/rest/client_2_slow_inventory.txt`](evidence/rest/client_2_slow_inventory.txt)). The order fails cleanly with `504` after 2.03 s, not 5 s:
+For this I restarted the inventory service with `--delay 5` and left the order service running with its 2 second timeout. The request comes back with a 504 after about 2 seconds instead of hanging for 5 ([`evidence/rest/client_2_slow_inventory.txt`](evidence/rest/client_2_slow_inventory.txt)):
 
 ```
 $ curl -s -i -w '\ntime_total=%{time_total}s\n' -X POST http://127.0.0.1:8000/orders -H "Content-Type: application/json" -d '{"item_id": "laptop", "quantity": 1}'
@@ -285,14 +273,14 @@ Connection: close
 time_total=2.034291s
 ```
 
-Order Service log. `requests` raised `Timeout`, which was caught and turned into a 504:
+The order service catches the timeout from `requests` and returns the 504:
 
 ```
 16:24:49.008 INFO    order-rest | POST /orders item_id=laptop quantity=1 -> POST http://127.0.0.1:8001/inventory/check (timeout 2.0s)
 16:24:51.040 ERROR   order-rest | Inventory timed out after 2.03s -> 504 Gateway Timeout
 ```
 
-Inventory log ([`evidence/rest/inventory_2_delay.log`](evidence/rest/inventory_2_delay.log)). The REST Inventory doesn't know the caller gave up, so it finishes the full 5 s and sends a `200` that nobody reads:
+The inventory service has no idea the order service already gave up, so it sleeps the full 5 seconds and sends back a 200 that nobody receives ([`evidence/rest/inventory_2_delay.log`](evidence/rest/inventory_2_delay.log)):
 
 ```
 16:24:49.027 INFO    inventory-rest | POST /inventory/check item_id=laptop quantity=1
@@ -300,11 +288,9 @@ Inventory log ([`evidence/rest/inventory_2_delay.log`](evidence/rest/inventory_2
 16:24:54.028 INFO    inventory-rest | -> 200 OK available_quantity=10 (after 5.00s)
 ```
 
-### 4. gRPC deadline handling
+### gRPC deadline
 
-Inventory was restarted with `--delay 5`, and the Order Service was left running with `--deadline 2`.
-
-Client ([`evidence/grpc/client_2_slow_inventory.txt`](evidence/grpc/client_2_slow_inventory.txt)):
+Same setup: the inventory service restarted with `--delay 5`, and the order service left running with a 2 second deadline ([`evidence/grpc/client_2_slow_inventory.txt`](evidence/grpc/client_2_slow_inventory.txt)):
 
 ```
 $ python grpc_version/order_client.py laptop 1
@@ -315,14 +301,14 @@ $ python grpc_version/order_client.py laptop 1
   details: Inventory service did not respond within the 2.0s deadline
 ```
 
-Order Service log. The stub raised `grpc.RpcError` with code `DEADLINE_EXCEEDED`, which was caught and returned to the client as a status:
+The order service catches the `DEADLINE_EXCEEDED` error and sends it back to the client:
 
 ```
 16:25:08.012 INFO    order-grpc | PlaceOrder item_id=laptop quantity=1 -> InventoryService.CheckAvailability @ 127.0.0.1:50051 (deadline 2.0s)
 16:25:10.020 ERROR   order-grpc | Inventory exceeded the 2.0s deadline (gave up after 2.01s) -> DEADLINE_EXCEEDED
 ```
 
-Inventory log ([`evidence/grpc/inventory_2_delay.log`](evidence/grpc/inventory_2_delay.log)). The deadline travels with the gRPC request, so the server knows it, sees it expire, and stops work at 2 s instead of 5 s:
+This is different from REST: the deadline is sent along with the gRPC request, so the inventory server knows about it, notices when it runs out, and stops at 2 seconds ([`evidence/grpc/inventory_2_delay.log`](evidence/grpc/inventory_2_delay.log)):
 
 ```
 16:25:08.014 INFO    inventory-grpc | CheckAvailability item_id=laptop quantity=1 (caller deadline in 2.01s)
@@ -330,11 +316,11 @@ Inventory log ([`evidence/grpc/inventory_2_delay.log`](evidence/grpc/inventory_2
 16:25:10.032 WARNING inventory-grpc | caller's deadline expired after 2.02s -> abandoning this request
 ```
 
-### 5. The Order Service keeps running after the failures
+### The order service keeps running
 
-Neither Order Service was restarted at any point. Right after the failure, the health check answers with the same pid, and `inventory_errors` counts the failure. Once Inventory is back without the delay, the **same process** confirms the next order (`ORD-0002`).
+I didn't restart either order service at any point during the demo. Right after each failure the health check still answers with the same pid. Once the inventory service is back to normal, the same process confirms the next order (ORD-0002).
 
-**REST**, pid `22688` throughout ([`client_2_slow_inventory.txt`](evidence/rest/client_2_slow_inventory.txt), [`client_3_recovered.txt`](evidence/rest/client_3_recovered.txt)):
+REST, pid 22688 the whole time ([`client_2_slow_inventory.txt`](evidence/rest/client_2_slow_inventory.txt), [`client_3_recovered.txt`](evidence/rest/client_3_recovered.txt)):
 
 ```
 $ curl -s -i http://127.0.0.1:8000/health          # right after the 504
@@ -353,7 +339,7 @@ HTTP/1.1 200 OK
 {"status":"UP","pid":22688,"uptime_seconds":13.0,"orders_confirmed":2,"orders_rejected":2,"inventory_errors":1}
 ```
 
-**gRPC**, pid `17952` throughout ([`client_2_slow_inventory.txt`](evidence/grpc/client_2_slow_inventory.txt), [`client_3_recovered.txt`](evidence/grpc/client_3_recovered.txt)):
+gRPC, pid 17952 the whole time ([`client_2_slow_inventory.txt`](evidence/grpc/client_2_slow_inventory.txt), [`client_3_recovered.txt`](evidence/grpc/client_3_recovered.txt)):
 
 ```
 $ python grpc_version/order_client.py --health     # right after DEADLINE_EXCEEDED
@@ -389,7 +375,7 @@ $ python grpc_version/order_client.py --health
   inventory_errors: 1
 ```
 
-Both Order Service logs continue straight from the failure to the next successful order:
+In both order service logs, the failure is followed straight away by the next successful order:
 
 ```
 # evidence/rest/order_service.log
@@ -403,8 +389,6 @@ Both Order Service logs continue straight from the failure to the next successfu
 16:25:13.722 INFO    order-grpc | Inventory OK in 2 ms -> CONFIRMED ORD-0002
 ```
 
----
+## REST vs gRPC: what I noticed
 
-## REST vs gRPC: what I observed
-
-With gRPC the contract lives in one place, because `inventory.proto` defines the messages, field types, and RPC and both stubs are generated from it, whereas in REST it is spread across the URL, the JSON field names, and the status codes, so both REST services had to check every field by hand (a missing field, `"2"` instead of `2`, or `true` passed as a number). The proto types still don't catch everything: proto3 cannot tell a missing `quantity` from `quantity: 0` (the `laptop 0` request above went out with no quantity field at all), so a range check was still needed. Both styles can report an unavailable item (`404`/`409` vs `NOT_FOUND`/`FAILED_PRECONDITION`), but in REST I had to choose the status codes and design the JSON error body myself, while gRPC provides a fixed set of status codes that the client receives as an exception with a code and details. The biggest difference was in timeouts: the REST Inventory had no idea the Order Service gave up after 2 s and sent a `200` nobody read 3 s later, while the gRPC deadline travels with the request, so the Inventory server saw `caller deadline in 2.01s` and stopped at 2 s. In exchange, REST was easier to test and debug with plain `curl` and readable JSON, while gRPC needed code generation, pinned `grpcio`/`protobuf` versions, and a custom client, because its payload is binary protobuf over HTTP/2.
+The biggest difference for me was where the contract lives. With gRPC I defined the messages and the RPC once in a `.proto` file and generated the code from it, but with REST the contract was really just the URL, the JSON field names, and the status codes I chose, so I had to validate every field by hand in both services. The gRPC types didn't catch everything though, because in proto3 a quantity of 0 looks exactly the same as no quantity at all, so I still needed my own check for that. Timeouts are where the two behaved most differently: when the REST call timed out, the inventory service kept working and sent its response 3 seconds after nobody was listening, but with gRPC the deadline travels with the request, so the inventory server saw it expire and stopped at 2 seconds. On the other hand, REST was much easier to test and debug since I could just use curl and read the JSON, while gRPC needed generated code, matching package versions, and a separate client script.
