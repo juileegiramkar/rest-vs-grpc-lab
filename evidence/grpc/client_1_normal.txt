@@ -1,0 +1,30 @@
+$ python grpc_version/order_client.py laptop 2
+> order.v1.OrderService/PlaceOrder  target=127.0.0.1:50052  deadline=10s
+  item_id: "laptop"
+  quantity: 2
+< OK  (4 ms)
+  order_id: "ORD-0001"
+  status: "CONFIRMED"
+  item_id: "laptop"
+  quantity: 2
+
+$ python grpc_version/order_client.py monitor 5
+> order.v1.OrderService/PlaceOrder  target=127.0.0.1:50052  deadline=10s
+  item_id: "monitor"
+  quantity: 5
+< FAILED_PRECONDITION  (8 ms)
+  details: Only 3 unit(s) of 'monitor' in stock, 5 requested
+
+$ python grpc_version/order_client.py phone 1
+> order.v1.OrderService/PlaceOrder  target=127.0.0.1:50052  deadline=10s
+  item_id: "phone"
+  quantity: 1
+< NOT_FOUND  (4 ms)
+  details: Item 'phone' does not exist
+
+$ python grpc_version/order_client.py laptop 0
+> order.v1.OrderService/PlaceOrder  target=127.0.0.1:50052  deadline=10s
+  item_id: "laptop"
+< INVALID_ARGUMENT  (2 ms)
+  details: quantity must be an integer >= 1
+

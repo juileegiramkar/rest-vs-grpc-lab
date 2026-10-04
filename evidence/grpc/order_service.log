@@ -1,0 +1,11 @@
+16:25:02.864 INFO    order-grpc | Order Service (gRPC) on 127.0.0.1:50052  inventory=127.0.0.1:50051  deadline=2.0s  pid=17952
+16:25:03.529 INFO    order-grpc | PlaceOrder item_id=laptop quantity=2 -> InventoryService.CheckAvailability @ 127.0.0.1:50051 (deadline 2.0s)
+16:25:03.531 INFO    order-grpc | Inventory OK in 2 ms -> CONFIRMED ORD-0001
+16:25:03.897 INFO    order-grpc | PlaceOrder item_id=monitor quantity=5 -> InventoryService.CheckAvailability @ 127.0.0.1:50051 (deadline 2.0s)
+16:25:03.902 INFO    order-grpc | Inventory FAILED_PRECONDITION in 5 ms -> FAILED_PRECONDITION
+16:25:04.294 INFO    order-grpc | PlaceOrder item_id=phone quantity=1 -> InventoryService.CheckAvailability @ 127.0.0.1:50051 (deadline 2.0s)
+16:25:04.295 INFO    order-grpc | Inventory NOT_FOUND in 1 ms -> NOT_FOUND
+16:25:08.012 INFO    order-grpc | PlaceOrder item_id=laptop quantity=1 -> InventoryService.CheckAvailability @ 127.0.0.1:50051 (deadline 2.0s)
+16:25:10.020 ERROR   order-grpc | Inventory exceeded the 2.0s deadline (gave up after 2.01s) -> DEADLINE_EXCEEDED
+16:25:13.720 INFO    order-grpc | PlaceOrder item_id=laptop quantity=1 -> InventoryService.CheckAvailability @ 127.0.0.1:50051 (deadline 2.0s)
+16:25:13.722 INFO    order-grpc | Inventory OK in 2 ms -> CONFIRMED ORD-0002

@@ -1,0 +1,18 @@
+$ python grpc_version/order_client.py laptop 1
+> order.v1.OrderService/PlaceOrder  target=127.0.0.1:50052  deadline=10s
+  item_id: "laptop"
+  quantity: 1
+< DEADLINE_EXCEEDED  (2011 ms)
+  details: Inventory service did not respond within the 2.0s deadline
+
+$ python grpc_version/order_client.py --health
+> order.v1.OrderService/Health  target=127.0.0.1:50052  deadline=10s
+  (empty message)
+< OK  (2 ms)
+  status: "UP"
+  pid: 17952
+  uptime_seconds: 7.5
+  orders_confirmed: 1
+  orders_rejected: 2
+  inventory_errors: 1
+

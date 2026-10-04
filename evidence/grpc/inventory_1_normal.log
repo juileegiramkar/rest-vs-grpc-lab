@@ -1,0 +1,7 @@
+16:25:02.849 INFO    inventory-grpc | Inventory Service (gRPC) on 127.0.0.1:50051  delay=0.0s  items={'laptop': 10, 'keyboard': 25, 'monitor': 3, 'headphones': 0}
+16:25:03.531 INFO    inventory-grpc | CheckAvailability item_id=laptop quantity=2 (caller deadline in 2.01s)
+16:25:03.531 INFO    inventory-grpc | -> OK available_quantity=10 (after 0.00s)
+16:25:03.899 INFO    inventory-grpc | CheckAvailability item_id=monitor quantity=5 (caller deadline in 2.01s)
+16:25:03.899 INFO    inventory-grpc | -> FAILED_PRECONDITION (after 0.00s)
+16:25:04.294 INFO    inventory-grpc | CheckAvailability item_id=phone quantity=1 (caller deadline in 2.01s)
+16:25:04.295 INFO    inventory-grpc | -> NOT_FOUND (after 0.00s)

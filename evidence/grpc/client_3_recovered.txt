@@ -1,0 +1,21 @@
+$ python grpc_version/order_client.py laptop 1
+> order.v1.OrderService/PlaceOrder  target=127.0.0.1:50052  deadline=10s
+  item_id: "laptop"
+  quantity: 1
+< OK  (4 ms)
+  order_id: "ORD-0002"
+  status: "CONFIRMED"
+  item_id: "laptop"
+  quantity: 1
+
+$ python grpc_version/order_client.py --health
+> order.v1.OrderService/Health  target=127.0.0.1:50052  deadline=10s
+  (empty message)
+< OK  (2 ms)
+  status: "UP"
+  pid: 17952
+  uptime_seconds: 11.2
+  orders_confirmed: 2
+  orders_rejected: 2
+  inventory_errors: 1
+

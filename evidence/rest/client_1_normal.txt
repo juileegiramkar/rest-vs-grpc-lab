@@ -1,0 +1,50 @@
+$ curl -s -i -X POST http://127.0.0.1:8000/orders -H "Content-Type: application/json" -d '{"item_id": "laptop", "quantity": 2}'
+HTTP/1.1 201 CREATED
+Server: Werkzeug/3.1.9 Python/3.13.15
+Date: Sun, 04 Oct 2026 23:24:45 GMT
+Content-Type: application/json
+Content-Length: 77
+Connection: close
+
+{"order_id":"ORD-0001","status":"CONFIRMED","item_id":"laptop","quantity":2}
+
+$ curl -s -i -X POST http://127.0.0.1:8001/inventory/check -H "Content-Type: application/json" -d '{"item_id": "laptop", "quantity": 2}'
+HTTP/1.1 200 OK
+Server: Werkzeug/3.1.9 Python/3.13.15
+Date: Sun, 04 Oct 2026 23:24:45 GMT
+Content-Type: application/json
+Content-Length: 85
+Connection: close
+
+{"item_id":"laptop","requested_quantity":2,"available_quantity":10,"available":true}
+
+$ curl -s -i -X POST http://127.0.0.1:8000/orders -H "Content-Type: application/json" -d '{"item_id": "monitor", "quantity": 5}'
+HTTP/1.1 409 CONFLICT
+Server: Werkzeug/3.1.9 Python/3.13.15
+Date: Sun, 04 Oct 2026 23:24:45 GMT
+Content-Type: application/json
+Content-Length: 93
+Connection: close
+
+{"error":"INSUFFICIENT_STOCK","message":"Only 3 unit(s) of 'monitor' in stock, 5 requested"}
+
+$ curl -s -i -X POST http://127.0.0.1:8000/orders -H "Content-Type: application/json" -d '{"item_id": "phone", "quantity": 1}'
+HTTP/1.1 404 NOT FOUND
+Server: Werkzeug/3.1.9 Python/3.13.15
+Date: Sun, 04 Oct 2026 23:24:45 GMT
+Content-Type: application/json
+Content-Length: 67
+Connection: close
+
+{"error":"ITEM_NOT_FOUND","message":"Item 'phone' does not exist"}
+
+$ curl -s -i -X POST http://127.0.0.1:8000/orders -H "Content-Type: application/json" -d '{"item_id": "laptop", "quantity": 0}'
+HTTP/1.1 400 BAD REQUEST
+Server: Werkzeug/3.1.9 Python/3.13.15
+Date: Sun, 04 Oct 2026 23:24:45 GMT
+Content-Type: application/json
+Content-Length: 74
+Connection: close
+
+{"error":"INVALID_ARGUMENT","message":"quantity must be an integer >= 1"}
+

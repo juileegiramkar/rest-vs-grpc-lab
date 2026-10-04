@@ -1,0 +1,4 @@
+16:25:07.402 INFO    inventory-grpc | Inventory Service (gRPC) on 127.0.0.1:50051  delay=5.0s  items={'laptop': 10, 'keyboard': 25, 'monitor': 3, 'headphones': 0}
+16:25:08.014 INFO    inventory-grpc | CheckAvailability item_id=laptop quantity=1 (caller deadline in 2.01s)
+16:25:08.014 WARNING inventory-grpc | simulated slow response: sleeping 5.0s
+16:25:10.032 WARNING inventory-grpc | caller's deadline expired after 2.02s -> abandoning this request

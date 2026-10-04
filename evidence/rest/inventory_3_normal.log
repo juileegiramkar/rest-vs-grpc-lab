@@ -1,0 +1,5 @@
+16:24:56.952 INFO    inventory-rest | Inventory Service (REST) on http://127.0.0.1:8001  delay=0.0s  items={'laptop': 10, 'keyboard': 25, 'monitor': 3, 'headphones': 0}
+ * Serving Flask app 'inventory_service'
+ * Debug mode: off
+16:24:57.376 INFO    inventory-rest | POST /inventory/check item_id=laptop quantity=1
+16:24:57.376 INFO    inventory-rest | -> 200 OK available_quantity=10 (after 0.00s)

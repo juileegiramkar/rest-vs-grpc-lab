@@ -1,0 +1,22 @@
+$ curl -s -i -w '\ntime_total=%{time_total}s\n' -X POST http://127.0.0.1:8000/orders -H "Content-Type: application/json" -d '{"item_id": "laptop", "quantity": 1}'
+HTTP/1.1 504 GATEWAY TIMEOUT
+Server: Werkzeug/3.1.9 Python/3.13.15
+Date: Sun, 04 Oct 2026 23:24:51 GMT
+Content-Type: application/json
+Content-Length: 88
+Connection: close
+
+{"error":"INVENTORY_TIMEOUT","message":"Inventory service did not respond within 2.0s"}
+
+time_total=2.034291s
+
+$ curl -s -i http://127.0.0.1:8000/health
+HTTP/1.1 200 OK
+Server: Werkzeug/3.1.9 Python/3.13.15
+Date: Sun, 04 Oct 2026 23:24:51 GMT
+Content-Type: application/json
+Content-Length: 111
+Connection: close
+
+{"status":"UP","pid":22688,"uptime_seconds":6.7,"orders_confirmed":1,"orders_rejected":2,"inventory_errors":1}
+

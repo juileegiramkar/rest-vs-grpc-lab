@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package inventory.v1;
+
+// Inventory Service contract.
+// gRPC equivalent of `POST /inventory/check` in the REST version.
+service InventoryService {
+  // Succeeds (status OK) when the item exists and at least `quantity` units are in stock.
+  //
+  // Error statuses:
+  //   INVALID_ARGUMENT    - item_id is empty or quantity < 1
+  //   NOT_FOUND           - item_id is not in the catalog
+  //   FAILED_PRECONDITION - item exists but there are not enough units in stock
+  rpc CheckAvailability(CheckAvailabilityRequest) returns (CheckAvailabilityResponse);
+}
+
+message CheckAvailabilityRequest {
+  string item_id = 1;
+  int32 quantity = 2;
+}
+
+message CheckAvailabilityResponse {
+  string item_id = 1;
+  int32 requested_quantity = 2;
+  int32 available_quantity = 3;
+  bool available = 4;
+}
